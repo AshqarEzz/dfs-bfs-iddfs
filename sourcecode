@@ -1,0 +1,252 @@
+import pygame
+from queue import Queue
+
+class Spot:
+    def __init__(self, row, col, width, total_rows):
+        self.row = row
+        self.col = col
+        self.x = row * width
+        self.y = col * width
+        self.color = (255, 255, 255)
+        self.neighbors = []
+        self.width = width
+        self.total_rows = total_rows
+
+    def get_pos(self):
+        return self.row, self.col
+
+    def is_closed(self):
+        return self.color == (255, 0, 0)
+
+    def is_open(self):
+        return self.color == (0, 255, 0)
+
+    def is_barrier(self):
+        return self.color == (0, 0, 0)
+
+    def is_start(self):
+        return self.color == (255, 165, 0)
+
+    def is_end(self):
+        return self.color == (64, 224, 208)
+
+    def reset(self):
+        self.color = (255, 255, 255)
+
+    def make_start(self):
+        self.color = (255, 165, 0)
+
+    def make_closed(self):
+        self.color = (255, 0, 0)
+
+    def make_open(self):
+        self.color = (0, 255, 0)
+
+    def make_barrier(self):
+        self.color = (0, 0, 0)
+
+    def make_end(self):
+        self.color = (64, 224, 208)
+
+    def make_path(self):
+        self.color = (128, 0, 128)
+
+    def draw(self, win):
+        pygame.draw.rect(win, self.color, (self.x, self.y, self.width, self.width))
+
+    def update_neighbors(self, grid):
+        self.neighbors = []
+        if self.row < self.total_rows - 1 and not grid[self.row + 1][self.col].is_barrier():  # DOWN
+            self.neighbors.append(grid[self.row + 1][self.col])
+
+        if self.row > 0 and not grid[self.row - 1][self.col].is_barrier():  # UP
+            self.neighbors.append(grid[self.row - 1][self.col])
+
+        if self.col < self.total_rows - 1 and not grid[self.row][self.col + 1].is_barrier():  # RIGHT
+            self.neighbors.append(grid[self.row][self.col + 1])
+
+        if self.col > 0 and not grid[self.row][self.col - 1].is_barrier():  # LEFT
+            self.neighbors.append(grid[self.row][self.col - 1])
+
+class Visualization:
+    def __init__(self):
+        self.WIDTH = 800
+        self.WIN = pygame.display.set_mode((self.WIDTH, self.WIDTH))
+        pygame.display.set_caption("Pathfinding Algorithms")
+        self.WHITE = (255, 255, 255)
+        self.GREY = (128, 128, 128)
+
+    def make_grid(self, rows, width):
+        grid = []
+        gap = width // rows
+        for i in range(rows):
+            grid.append([])
+            for j in range(rows):
+                spot = Spot(i, j, gap, rows)
+                grid[i].append(spot)
+        return grid
+
+    def draw_grid(self, win, rows, width):
+        gap = width // rows
+        for i in range(rows):
+            pygame.draw.line(win, self.GREY, (0, i * gap), (width, i * gap))
+            for j in range(rows):
+                pygame.draw.line(win, self.GREY, (j * gap, 0), (j * gap, width))
+
+    def draw(self, win, grid, rows, width):
+        win.fill(self.WHITE)
+        for row in grid:
+            for spot in row:
+                spot.draw(win)
+        self.draw_grid(win, rows, width)
+        pygame.display.update()
+
+    def get_clicked_pos(self, pos, rows, width):
+        gap = width // rows
+        y, x = pos
+        row = y // gap
+        col = x // gap
+        return row, col
+
+    def reconstruct_path(self, came_from, current, draw):
+        while current in came_from:
+            current = came_from[current]
+            current.make_path()
+            draw()
+
+    def dfs(self, grid, start, end):
+        stack = [start]
+        came_from = {}
+        visited = {start}
+        while stack:
+            current = stack.pop()
+            if current == end:
+                self.reconstruct_path(came_from, end, lambda: self.draw(self.WIN, grid, len(grid), self.WIDTH))
+                end.make_end()
+                return True
+            for neighbor in current.neighbors:
+                if neighbor not in visited:
+                    came_from[neighbor] = current
+                    visited.add(neighbor)
+                    stack.append(neighbor)
+                    neighbor.make_open()
+            self.draw(self.WIN, grid, len(grid), self.WIDTH)
+            if current != start:
+                current.make_closed()
+        return False
+
+    def bfs(self, grid, start, end):
+        queue = Queue()
+        queue.put(start)
+        came_from = {}
+        visited = {start}
+        while not queue.empty():
+            current = queue.get()
+            if current == end:
+                self.reconstruct_path(came_from, end, lambda: self.draw(self.WIN, grid, len(grid), self.WIDTH))
+                end.make_end()
+                return True
+            for neighbor in current.neighbors:
+                if neighbor not in visited:
+                    came_from[neighbor] = current
+                    visited.add(neighbor)
+                    queue.put(neighbor)
+                    neighbor.make_open()
+            self.draw(self.WIN, grid, len(grid), self.WIDTH)
+            if current != start:
+                current.make_closed()
+        return False
+
+    def iddfs(self, grid, start, end, depth_limit):
+        def dfs_recursive(node, depth):
+            if node == end:  # Found the target
+                return True
+            if depth <= 0:  # Reached depth limit
+                return False
+            for neighbor in node.neighbors:
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    came_from[neighbor] = node
+                    if dfs_recursive(neighbor, depth - 1):
+                        return True
+                    neighbor.make_open()
+            return False
+
+        for depth in range(depth_limit + 1):
+            visited = {start}
+            came_from = {}
+            if dfs_recursive(start, depth):
+                self.reconstruct_path(came_from, end, lambda: self.draw(self.WIN, grid, len(grid), self.WIDTH))
+                end.make_end()
+                return True
+            self.draw(self.WIN, grid, len(grid), self.WIDTH)  # Update visualization after each depth level
+        return False
+
+    def main(self):
+        ROWS = 50
+        grid = self.make_grid(ROWS, self.WIDTH)
+
+        start = None
+        end = None
+
+        run = True
+        while run:
+            self.draw(self.WIN, grid, ROWS, self.WIDTH)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    run = False
+
+                if pygame.mouse.get_pressed()[0]:  # LEFT
+                    pos = pygame.mouse.get_pos()
+                    row, col = self.get_clicked_pos(pos, ROWS, self.WIDTH)
+                    spot = grid[row][col]
+                    if not start and spot != end:
+                        start = spot
+                        start.make_start()
+
+                    elif not end and spot != start:
+                        end = spot
+                        end.make_end()
+
+                    elif spot != end and spot != start:
+                        spot.make_barrier()
+
+                elif pygame.mouse.get_pressed()[2]:  # RIGHT
+                    pos = pygame.mouse.get_pos()
+                    row, col = self.get_clicked_pos(pos, ROWS, self.WIDTH)
+                    spot = grid[row][col]
+                    spot.reset()
+                    if spot == start:
+                        start = None
+                    elif spot == end:
+                        end = None
+
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_1 and start and end:  # DFS
+                        for row in grid:
+                            for spot in row:
+                                spot.update_neighbors(grid)
+                        self.dfs(grid, start, end)
+
+                    if event.key == pygame.K_2 and start and end:  # BFS
+                        for row in grid:
+                            for spot in row:
+                                spot.update_neighbors(grid)
+                        self.bfs(grid, start, end)
+
+                    if event.key == pygame.K_3 and start and end:  # IDDFS
+                        for row in grid:
+                            for spot in row:
+                                spot.update_neighbors(grid)
+                        self.iddfs(grid, start, end, depth_limit=50)
+
+                    if event.key == pygame.K_c:
+                        start = None
+                        end = None
+                        grid = self.make_grid(ROWS, self.WIDTH)
+
+        pygame.quit()
+
+if __name__ == "__main__":
+    visualization = Visualization()
+    visualization.main()
